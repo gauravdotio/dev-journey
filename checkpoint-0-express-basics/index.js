@@ -1,4 +1,5 @@
 const { Pool } = require("pg");
+const bcrypt = require("bcrypt");
 
 const pool = new Pool({
   user: "gauravrawat",
@@ -61,6 +62,23 @@ app.delete("/notes/:id", async (req, res) => {
   }
 });
 
+app.post("/signup", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    const result = await pool.query(
+      "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id, email, created_at",
+      [email, hashedPassword]
+    );
+
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong" });
+  }
+});
 
 app.listen(3000, () => {
   console.log("server running on http://localhost:3000");
