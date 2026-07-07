@@ -1,3 +1,13 @@
+const { Pool } = require("pg");
+
+const pool = new Pool({
+  user: "gauravrawat",
+  host: "localhost",
+  database: "notesapp",
+  password: "",
+  port: 5432,
+});
+
 const express = require("express");
 const app = express();
 
@@ -5,29 +15,31 @@ app.use(express.json());
 
 let notes = [];
 
-app.get("/hello", (req, res) => {
-  res.json({ message: "This is working!" });
+app.post("/notes", async (req, res) => {
+  try {
+    const result = await pool.query(
+      "INSERT INTO notes (text) VALUES ($1) RETURNING *",
+      [req.body.text],
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong" });
+  }
 });
 
-app.get("/hi", (req, res) => {
-  res.json({ message: "Hi is also working!" });
-});
-
-app.post("/notes", (req, res) => {
-  const newNOte = {
-    id: Date.now(),
-    text: req.body.text,
-  };
-  notes.push(newNOte);
-  res.status(201).json(newNOte);
-});
-
-app.get("/notes", (req, res) => {
-  res.json(notes);
+app.get("/notes", async (req, res) => {
+  try {
+    const result = await pool.query("SELECT * FROM notes");
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong" });
+  }
 });
 
 app.delete("/notes/:id", (req, res) => {
-  notes = notes.filter(note => note.id != req.params.id);
+  notes = notes.filter((note) => note.id != req.params.id);
   res.json({ success: true, message: "Notes deleted" });
 });
 
