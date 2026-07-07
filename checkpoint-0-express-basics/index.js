@@ -1,5 +1,8 @@
 const { Pool } = require("pg");
 const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
+const express = require("express");
+
 
 const pool = new Pool({
   user: "gauravrawat",
@@ -9,7 +12,6 @@ const pool = new Pool({
   port: 5432,
 });
 
-const express = require("express");
 const app = express();
 
 app.use(express.json());
@@ -74,6 +76,33 @@ app.post("/signup", async (req, res) => {
     );
 
     res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong" });
+  }
+});
+
+app.post("/login", async (req, res) => {
+  try {
+    const { email, password } = req.body;
+
+    const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
+    const user = result.rows[0];
+
+    if (!user) {
+      return res.status(400).json({ error: "Invalid email or password" });
+    }
+
+    const isPasswordCorrect = await bcrypt.compare(password, user.password);
+
+    if (!isPasswordCorrect) {
+      return res.status(400).json({ error: "Invalid email or password" });
+    }
+
+    const token = jwt.sign({ userId: user.id }, "mysecretkey123", { expiresIn: "1h" });
+
+    res.json({ token });
+    
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Something went wrong" });
