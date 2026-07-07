@@ -38,10 +38,29 @@ app.get("/notes", async (req, res) => {
   }
 });
 
-app.delete("/notes/:id", (req, res) => {
-  notes = notes.filter((note) => note.id != req.params.id);
-  res.json({ success: true, message: "Notes deleted" });
+app.put("/notes/:id", async (req, res) => {
+  try {
+    await pool.query(
+      "UPDATE notes SET text = $1 WHERE id = $2",
+      [req.body.text, req.params.id]
+    );
+    res.json({ success: true, message: "Note updated" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong" });
+  }
 });
+
+app.delete("/notes/:id", async (req, res) => {
+  try {
+    await pool.query("DELETE FROM notes WHERE id = $1", [req.params.id]);
+    res.json({ success: true, message: "Note deleted" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Something went wrong" });
+  }
+});
+
 
 app.listen(3000, () => {
   console.log("server running on http://localhost:3000");
