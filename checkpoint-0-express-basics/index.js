@@ -3,7 +3,6 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const express = require("express");
 
-
 const pool = new Pool({
   user: "gauravrawat",
   host: "localhost",
@@ -12,17 +11,34 @@ const pool = new Pool({
   port: 5432,
 });
 
+function authenticateToken(req, res, next) {
+  const authHeader = req.headers["authorization"];
+  const token = authHeader && authHeader.split(" ")[1];
+
+  if (!token) {
+    return res.status(401).json({ error: "No token provided" });
+  }
+
+  jwt.verify(token, "mysecretkey123", (err, decoded) => {
+    if (err) {
+      return res.status(403).json({ error: "Invalid token" });
+    }
+    req.userId = decoded.userId;
+    next();
+  });
+}
+
 const app = express();
 
 app.use(express.json());
 
 let notes = [];
 
-app.post("/notes", async (req, res) => {
+app.post("/notes", authenticateToken, async (req, res) => {
   try {
     const result = await pool.query(
-      "INSERT INTO notes (text) VALUES ($1) RETURNING *",
-      [req.body.text],
+      "INSERT INTO notes (text, user_id) VALUES ($1, $2) RETURNING *",
+      [req.body.text, req.userId]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -31,9 +47,9 @@ app.post("/notes", async (req, res) => {
   }
 });
 
-app.get("/notes", async (req, res) => {
+app.get("/notes", authenticateToken, async (req, res) => {
   try {
-    const result = await pool.query("SELECT * FROM notes");
+    const result = await pool.query("SELECT * FROM notes WHERE user_id = $1", [req.userId]);
     res.json(result.rows);
   } catch (err) {
     console.error(err);
@@ -102,7 +118,7 @@ app.post("/login", async (req, res) => {
     const token = jwt.sign({ userId: user.id }, "mysecretkey123", { expiresIn: "1h" });
 
     res.json({ token });
-    
+
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Something went wrong" });
