@@ -14,11 +14,9 @@ const pool = new Pool({
 function authenticateToken(req, res, next) {
   const authHeader = req.headers["authorization"];
   const token = authHeader && authHeader.split(" ")[1];
-
   if (!token) {
     return res.status(401).json({ error: "No token provided" });
   }
-
   jwt.verify(token, "mysecretkey123", (err, decoded) => {
     if (err) {
       return res.status(403).json({ error: "Invalid token" });
@@ -29,16 +27,19 @@ function authenticateToken(req, res, next) {
 }
 
 const app = express();
-
 app.use(express.json());
-
-let notes = [];
 
 app.post("/notes", authenticateToken, async (req, res) => {
   try {
+    const { text } = req.body;
+
+    if (!text || text.trim() === "") {
+      return res.status(400).json({ error: "Note text cannot be empty" });
+    }
+
     const result = await pool.query(
       "INSERT INTO notes (text, user_id) VALUES ($1, $2) RETURNING *",
-      [req.body.text, req.userId]
+      [text, req.userId]
     );
     res.status(201).json(result.rows[0]);
   } catch (err) {
@@ -57,12 +58,23 @@ app.get("/notes", authenticateToken, async (req, res) => {
   }
 });
 
-app.put("/notes/:id", async (req, res) => {
+app.put("/notes/:id", authenticateToken, async (req, res) => {
   try {
-    await pool.query(
-      "UPDATE notes SET text = $1 WHERE id = $2",
-      [req.body.text, req.params.id]
+    const { text } = req.body;
+
+    if (!text || text.trim() === "") {
+      return res.status(400).json({ error: "Note text cannot be empty" });
+    }
+
+    const result = await pool.query(
+      "UPDATE notes SET text = $1 WHERE id = $2 AND user_id = $3 RETURNING *",
+      [text, req.params.id, req.userId]
     );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Note not found or not yours" });
+    }
+
     res.json({ success: true, message: "Note updated" });
   } catch (err) {
     console.error(err);
@@ -70,9 +82,15 @@ app.put("/notes/:id", async (req, res) => {
   }
 });
 
-app.delete("/notes/:id", async (req, res) => {
+app.delete("/notes/:id", authenticateToken, async (req, res) => {
   try {
-    await pool.query("DELETE FROM notes WHERE id = $1", [req.params.id]);
+    const result = await pool.query(
+      "DELETE FROM notes WHERE id = $1 AND user_id = $2 RETURNING *",
+      [req.params.id, req.userId]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "Note not found or not yours" });
+    }
     res.json({ success: true, message: "Note deleted" });
   } catch (err) {
     console.error(err);
@@ -84,13 +102,19 @@ app.post("/signup", async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    const hashedPassword = await bcrypt.hash(password, 10);
+    if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required" });
+    }
 
+    if (password.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters" });
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10);
     const result = await pool.query(
       "INSERT INTO users (email, password) VALUES ($1, $2) RETURNING id, email, created_at",
       [email, hashedPassword]
     );
-
     res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
@@ -101,24 +125,17 @@ app.post("/signup", async (req, res) => {
 app.post("/login", async (req, res) => {
   try {
     const { email, password } = req.body;
-
     const result = await pool.query("SELECT * FROM users WHERE email = $1", [email]);
     const user = result.rows[0];
-
     if (!user) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
-
     const isPasswordCorrect = await bcrypt.compare(password, user.password);
-
     if (!isPasswordCorrect) {
       return res.status(400).json({ error: "Invalid email or password" });
     }
-
     const token = jwt.sign({ userId: user.id }, "mysecretkey123", { expiresIn: "1h" });
-
     res.json({ token });
-
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Something went wrong" });
